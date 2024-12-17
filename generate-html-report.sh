@@ -28,6 +28,12 @@ body {
     margin: 20px;
 }
 
+h2 {
+    margin-top: 40px;
+    margin-bottom: 10px;
+    font-size: 1.5em;
+}
+
 table {
     border-collapse: collapse;
     width: 100%;
@@ -57,23 +63,17 @@ summary {
 <body>
 
 <h1>Git Contributions Report since $DATE</h1>
-
-<table>
-<thead>
-<tr>
-    <th>Contributor</th>
-    <th>Repository</th>
-    <th>Count</th>
-    <th>Commits</th>
-</tr>
-</thead>
-<tbody>
 EOF
 
 # For each contributor
+echo "<div class=\"contributors\">"
 while IFS= read -r contributor
 do
     [ -z "$contributor" ] && continue
+
+    # Track total commits for this contributor across all repos
+    contributor_total=0
+    contributor_rows=""
 
     # For each repository
     while IFS='|' read -r repo main_branch
@@ -81,49 +81,67 @@ do
         repo=$(echo "$repo" | xargs)
         main_branch=$(echo "$main_branch" | xargs)
 
-        # Get the list of commits to main branch
+        # Get the list of commits for this repo/contributor since DATE
         commits=$(git -C "$repo" log --since "$DATE" --author="$contributor" --oneline "$main_branch" 2>/dev/null)
 
-        # Count how many contributions to main
+        # Count how many commits
         count=$(echo "$commits" | grep -c .)
 
-        # Begin table row
-        echo "<tr>"
-        echo "  <td>$contributor</td>"
-        echo "  <td>$repo</td>"
-        echo "  <td>$count</td>"
-        echo "  <td>"
+        if [ "$count" -gt 0 ]; then
+            contributor_total=$((contributor_total + count))
+        fi
+
+        # Build the table row for this repo
+        row="<tr>"
+        row+="<td><strong>$repo</strong></td>"
+        row+="<td>$count</td>"
+        row+="<td>"
 
         if [ "$count" -gt 0 ]; then
-            # Use a <details> element to show/hide the list of files
-            echo "<details>"
-            echo "<summary>Show commits</summary>"
-            echo "<ul>"
-            # Print each contribution as a list item
+            row+="<details>"
+            row+="<summary>Show commits</summary>"
+            row+="<ul>"
+            
+            # Print each commit and linkify the PR references
             while IFS= read -r commit
             do
                 [ -z "$commit" ] && continue
-                # Linkify the PR reference (#XXXX)
-                # The pattern: (#1234)
-                commit_linked=$(echo "$commit" | sed -E 's/\(#([0-9]+)\)/(<a href="https:\/\/github.com\/christian-x7h\/'"$repo"'\/pull\/\1">#\1<\/a>)/g')      
-                echo "<li>$commit_linked</li>"
+                commit_linked=$(echo "$commit" | sed -E 's/\(#([0-9]+)\)/(<a href="https:\/\/github.com\/christian-x7h\/'"$repo"'\/pull\/\1">#\1<\/a>)/g')
+                row+="<li>$commit_linked</li>"
             done <<< "$commits"
-            echo "</ul>"
-            echo "</details>"
+            row+="</ul>"
+            row+="</details>"
         else
-            echo "No commits"
+            row+="No commits"
         fi
 
-        echo "  </td>"
-        echo "</tr>"
+        row+="</td>"
+        row+="</tr>"
 
+        contributor_rows+="$row"
     done <<< "$REPOS"
+
+    # Now print the contributor section
+    echo "<h2>$contributor</h2>"
+    echo "<p><strong>Total Commits:</strong> $contributor_total</p>"
+    echo "<table>"
+    echo "<thead>"
+    echo "<tr>"
+    echo "<th>Repository</th>"
+    echo "<th>Count</th>"
+    echo "<th>Commits</th>"
+    echo "</tr>"
+    echo "</thead>"
+    echo "<tbody>"
+    echo "$contributor_rows"
+    echo "</tbody>"
+    echo "</table>"
+
 done <<< "$CONTRIBUTORS"
+echo "</div>"
 
 # Close HTML
 cat <<EOF
-</tbody>
-</table>
 </body>
 </html>
 EOF
